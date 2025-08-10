@@ -300,15 +300,6 @@
             border-radius: 8px;
         }
         
-        .debug {
-            background: #f0f0f0;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 12px;
-        }
-        
         .about-info {
             background: #f8f9fa;
             border-radius: 8px;
@@ -416,9 +407,6 @@
         <div id="api-status" style="padding: 3px; text-align: center; font-size: 11px; background: #E8F5E8; color: #34C759; display: none;">
             🤖 OpenAI подключен
         </div>
-        
-        <!-- Debug Panel (скрыть в продакшене) -->
-        <div class="debug" id="debug-panel"></div>
     </div>
 
     <script>
@@ -1221,10 +1209,8 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
         document.head.appendChild(syncStyles);
         
         function debugLog(message, data) {
+            // Только в консоль, не в интерфейс
             console.log(`[AI Coach] ${message}`, data);
-            const debugPanel = document.getElementById('debug-panel');
-            debugPanel.innerHTML += `<div><strong>${new Date().toLocaleTimeString()}:</strong> ${message}</div>`;
-            if (data) debugPanel.innerHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
         }
         
         // ================ ПРОАКТИВНЫЕ УВЕДОМЛЕНИЯ ================
