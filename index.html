@@ -685,26 +685,31 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
                 const validationResult = validateMemoryUpdate(tempBuffer);
                 
                 if (validationResult.isValid) {
-                    // Создаем бэкап текущего состояния
-                    createBackup();
+                    // Создаем бэкап текущего состояния (только если есть критические изменения)
+                    if (updateData.goalId || updateData.userInfo) {
+                        createBackup();
+                    }
                     
                     // Применяем обновления
                     applyMemoryUpdate(updateData);
                     
-                    // Сохраняем в localStorage
-                    saveToStorage();
+                    // Сохраняем (без дублирования Firebase конфликтов)
+                    saveToStorageSafe();
                     
                     debugLog('Память успешно обновлена');
                     return true;
                 } else {
                     debugLog('Ошибка валидации:', validationResult.error);
-                    showError('Не удалось обновить данные: ' + validationResult.error);
+                    // НЕ показываем ошибку пользователю для мелких проблем
                     return false;
                 }
             } catch (error) {
                 debugLog('Критическая ошибка обновления памяти:', error);
-                restoreFromBackup();
-                showError('Произошла ошибка, данные восстановлены из бэкапа');
+                // Только для критических ошибок показываем сообщение
+                if (error.message.includes('JSON') || error.message.includes('critical')) {
+                    restoreFromBackup();
+                    showError('Данные восстановлены из резервной копии');
+                }
                 return false;
             }
         }
@@ -796,45 +801,40 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
             renderAbout();
         }
         
-        // ================ СИСТЕМА БЭКАПОВ ================
+        // ================ СИСТЕМА БЭКАПОВ (упрощенная) ================
         function createBackup() {
-            const backup = {
-                timestamp: Date.now(),
-                userContext: JSON.parse(JSON.stringify(appState.userContext)),
-                goals: JSON.parse(JSON.stringify(appState.goals))
-            };
-            
-            localStorage.setItem('backup_' + backup.timestamp, JSON.stringify(backup));
-            debugLog('Бэкап создан:', backup.timestamp);
-            
-            // Оставляем только последние 5 бэкапов
-            cleanupOldBackups();
-        }
-        
-        function restoreFromBackup() {
-            const backupKeys = Object.keys(localStorage)
-                .filter(key => key.startsWith('backup_'))
-                .sort((a, b) => b.split('_')[1] - a.split('_')[1]);
-            
-            if (backupKeys.length > 0) {
-                const latestBackup = JSON.parse(localStorage.getItem(backupKeys[0]));
-                appState.userContext = latestBackup.userContext;
-                appState.goals = latestBackup.goals;
+            try {
+                const backup = {
+                    timestamp: Date.now(),
+                    userContext: JSON.parse(JSON.stringify(appState.userContext)),
+                    goals: JSON.parse(JSON.stringify(appState.goals))
+                };
                 
-                debugLog('Восстановлено из бэкапа:', latestBackup.timestamp);
-                renderGoals();
+                localStorage.setItem('backup_latest', JSON.stringify(backup));
+                debugLog('Бэкап создан:', backup.timestamp);
+                
+            } catch (error) {
+                debugLog('Ошибка создания бэкапа:', error);
             }
         }
         
-        function cleanupOldBackups() {
-            const backupKeys = Object.keys(localStorage)
-                .filter(key => key.startsWith('backup_'))
-                .sort((a, b) => b.split('_')[1] - a.split('_')[1]);
-            
-            // Удаляем все кроме последних 5
-            backupKeys.slice(5).forEach(key => {
-                localStorage.removeItem(key);
-            });
+        function restoreFromBackup() {
+            try {
+                const backup = localStorage.getItem('backup_latest');
+                if (backup) {
+                    const backupData = JSON.parse(backup);
+                    appState.userContext = backupData.userContext;
+                    appState.goals = backupData.goals;
+                    
+                    debugLog('Восстановлено из бэкапа:', backupData.timestamp);
+                    renderGoals();
+                    renderAbout();
+                } else {
+                    debugLog('Бэкап не найден');
+                }
+            } catch (error) {
+                debugLog('Ошибка восстановления из бэкапа:', error);
+            }
         }
         
         // ================ РАБОТА С LLM ================
@@ -1012,9 +1012,18 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
             if (updateMatch) {
                 try {
                     const updateData = JSON.parse(updateMatch[1]);
-                    updateMemoryThroughBuffer(updateData);
+                    const success = updateMemoryThroughBuffer(updateData);
+                    
+                    if (success) {
+                        // Обновилось успешно - показываем позитивный фидбек
+                        debugLog('Обновление применено успешно');
+                    } else {
+                        // Ошибка обновления - НЕ показываем пользователю
+                        debugLog('Обновление не применено');
+                    }
                 } catch (error) {
                     debugLog('Ошибка парсинга обновления памяти:', error);
+                    // НЕ показываем техническую ошибку пользователю
                 }
             }
         }
@@ -1110,6 +1119,27 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
             }
             
             debugLog('Данные сохранены');
+        }
+        
+        function saveToStorageSafe() {
+            // Безопасное сохранение без конфликтов Firebase
+            try {
+                // Помечаем, что это локальное обновление
+                appState.lastUpdated = Date.now();
+                
+                localStorage.setItem('userContext', JSON.stringify(appState.userContext));
+                localStorage.setItem('userGoals', JSON.stringify(appState.goals));
+                
+                // Сохраняем в Firebase с задержкой, чтобы избежать конфликтов
+                if (db && userId) {
+                    setTimeout(() => saveToFirebase(), 1000);
+                }
+                
+                debugLog('Данные безопасно сохранены');
+            } catch (error) {
+                debugLog('Ошибка сохранения:', error);
+                // НЕ показываем ошибку пользователю
+            }
         }
         
         // ================ FIREBASE СИНХРОНИЗАЦИЯ ================
