@@ -72,9 +72,14 @@
             
             container.innerHTML = `
                 <div class="about-info">${aboutText || 'Информация о пользователе будет собрана во время общения'}</div>
-                <button onclick="resetOnboarding()" style="background: #FF3B30; color: white; border: none; padding: 10px 15px; border-radius: 8px; margin-top: 15px;">
-                    🔄 Пройти онбординг заново
-                </button>
+                <div style="margin-top: 15px;">
+                    <button onclick="resetOnboarding()" style="background: #FF3B30; color: white; border: none; padding: 10px 15px; border-radius: 8px; margin-right: 10px;">
+                        🔄 Пройти онбординг заново
+                    </button>
+                    <button onclick="changeApiKey()" style="background: #007AFF; color: white; border: none; padding: 10px 15px; border-radius: 8px;">
+                        🔑 Сменить API ключ
+                    </button>
+                </div>
             `;
         }
         
@@ -130,6 +135,23 @@
                 renderAbout();
                 
                 debugLog('Онбординг сброшен');
+            }
+        }
+        
+        function changeApiKey() {
+            if (confirm('Хотите сменить API ключ OpenAI?')) {
+                // Очищаем текущий ключ
+                localStorage.removeItem('openaiApiKey');
+                CONFIG.openaiApiKey = null;
+                
+                // Показываем экран настройки
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById('setup-screen').classList.add('active');
+                
+                // Очищаем поле ввода
+                document.getElementById('api-key-input').value = '';
+                
+                debugLog('Переход к смене API ключа');
             }
         }
         
@@ -310,8 +332,46 @@
 </head>
 <body>
     <div class="app">
+        <!-- API Key Setup Screen -->
+        <div id="setup-screen" class="screen active">
+            <div style="padding: 20px; text-align: center;">
+                <h2>🔑 Настройка AI Coach</h2>
+                <p style="margin: 20px 0; color: #666;">
+                    Для работы приложению нужен API ключ OpenAI.<br>
+                    Ключ будет сохранен только в вашем браузере.
+                </p>
+                
+                <div style="margin: 20px 0;">
+                    <input 
+                        type="password" 
+                        id="api-key-input" 
+                        placeholder="Вставьте ваш OpenAI API ключ (sk-proj-...)"
+                        style="width: 100%; padding: 15px; border: 2px solid #E5E5EA; border-radius: 8px; margin: 10px 0;"
+                    >
+                    <button 
+                        onclick="saveApiKey()" 
+                        style="width: 100%; padding: 15px; background: #007AFF; color: white; border: none; border-radius: 8px; font-size: 16px;"
+                    >
+                        Сохранить и продолжить
+                    </button>
+                </div>
+                
+                <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: left;">
+                    <strong>📋 Как получить API ключ:</strong><br>
+                    1. Зайдите на <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com/api-keys</a><br>
+                    2. Нажмите "Create new secret key"<br>
+                    3. Скопируйте ключ и вставьте сюда<br>
+                    4. Убедитесь, что на счету есть деньги ($5 минимум)
+                </div>
+                
+                <div style="margin: 10px 0; font-size: 14px; color: #666;">
+                    🔒 Ключ хранится локально в вашем браузере и никуда не передается
+                </div>
+            </div>
+        </div>
+
         <!-- Chat Screen -->
-        <div id="chat-screen" class="screen active">
+        <div id="chat-screen" class="screen">
             <div class="chat-container" id="chat-container">
                 <div class="message ai-message">
                     <div id="welcome-message">Привет! Давай настроим твой персональный AI-коуч.</div>
@@ -352,6 +412,11 @@
             📱 Локальное хранение
         </div>
         
+        <!-- Статус API подключения -->
+        <div id="api-status" style="padding: 3px; text-align: center; font-size: 11px; background: #E8F5E8; color: #34C759; display: none;">
+            🤖 OpenAI подключен
+        </div>
+        
         <!-- Debug Panel (скрыть в продакшене) -->
         <div class="debug" id="debug-panel"></div>
     </div>
@@ -359,7 +424,7 @@
     <script>
         // ================ КОНФИГУРАЦИЯ ================
         const CONFIG = {
-            openaiApiKey: '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', // Замените на ваш API ключ
+            openaiApiKey: 'YOUR_API_KEY_HERE', // Замените на ваш API ключ
             apiUrl: 'https://api.openai.com/v1/chat/completions',
             model: 'gpt-4',
             maxTokens: 1000,
@@ -452,6 +517,21 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
         async function initApp() {
             debugLog('Инициализация приложения...');
             
+            // Проверяем наличие API ключа
+            const savedApiKey = localStorage.getItem('openaiApiKey');
+            if (!savedApiKey) {
+                // Показываем экран настройки API ключа
+                document.getElementById('setup-screen').classList.add('active');
+                debugLog('API ключ не найден, показываем экран настройки');
+                return;
+            }
+            
+            CONFIG.openaiApiKey = savedApiKey;
+            
+            // Скрываем экран настройки и показываем основное приложение
+            document.getElementById('setup-screen').classList.remove('active');
+            document.getElementById('chat-screen').classList.add('active');
+            
             // Инициализируем Firebase для синхронизации
             const firebaseReady = initFirebase();
             
@@ -483,6 +563,113 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
                 // Первый запуск - режим онбординга
                 appState.currentMode = 'onboarding';
                 debugLog('Первый запуск - режим онбординга');
+            }
+            
+            // Настройка обработчиков
+            document.getElementById('message-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+        }
+        
+        // ================ УПРАВЛЕНИЕ API КЛЮЧОМ ================
+        function saveApiKey() {
+            const keyInput = document.getElementById('api-key-input');
+            const apiKey = keyInput.value.trim();
+            
+            // Базовая валидация ключа
+            if (!apiKey.startsWith('sk-')) {
+                alert('API ключ должен начинаться с "sk-"');
+                return;
+            }
+            
+            if (apiKey.length < 20) {
+                alert('API ключ слишком короткий');
+                return;
+            }
+            
+            // Сохраняем ключ
+            localStorage.setItem('openaiApiKey', apiKey);
+            CONFIG.openaiApiKey = apiKey;
+            
+            debugLog('API ключ сохранен');
+            
+            // Тестируем подключение
+            testApiConnection();
+        }
+        
+        async function testApiConnection() {
+            try {
+                debugLog('Тестирование подключения к OpenAI...');
+                
+                const response = await fetch(CONFIG.apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${CONFIG.openaiApiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: CONFIG.model,
+                        messages: [{ role: 'user', content: 'Привет' }],
+                        max_tokens: 10
+                    })
+                });
+                
+                if (response.ok) {
+                    debugLog('Подключение к OpenAI успешно!');
+                    
+                    // Показываем статус подключения
+                    document.getElementById('api-status').style.display = 'block';
+                    document.getElementById('api-status').innerHTML = '🤖 OpenAI подключен (GPT-3.5)';
+                    
+                    // Скрываем экран настройки
+                    document.getElementById('setup-screen').classList.remove('active');
+                    document.getElementById('chat-screen').classList.add('active');
+                    
+                    // Инициализируем основное приложение
+                    await initMainApp();
+                } else {
+                    const error = await response.json();
+                    throw new Error(`API ошибка: ${response.status} - ${error.error?.message || 'Неизвестная ошибка'}`);
+                }
+                
+            } catch (error) {
+                debugLog('Ошибка подключения:', error);
+                alert(`Ошибка подключения к OpenAI: ${error.message}\n\nПроверьте:\n- Правильность API ключа\n- Наличие средств на счету\n- Подключение к интернету`);
+                
+                // Очищаем неверный ключ
+                localStorage.removeItem('openaiApiKey');
+                CONFIG.openaiApiKey = null;
+            }
+        }
+        
+        async function initMainApp() {
+            // Инициализируем Firebase для синхронизации
+            const firebaseReady = initFirebase();
+            
+            // Проверяем, первый ли это запуск
+            let savedContext, savedGoals;
+            
+            if (firebaseReady) {
+                const userData = await loadFromFirebase();
+                savedContext = userData.userContext;
+                savedGoals = userData.goals;
+            } else {
+                savedContext = JSON.parse(localStorage.getItem('userContext') || 'null');
+                savedGoals = JSON.parse(localStorage.getItem('userGoals') || 'null');
+            }
+            
+            if (savedContext && savedGoals) {
+                appState.currentMode = 'daily';
+                appState.userContext = savedContext;
+                appState.goals = savedGoals;
+                
+                displayWelcomeMessage();
+                renderGoals();
+                renderAbout();
+            } else {
+                appState.currentMode = 'onboarding';
             }
             
             // Настройка обработчиков
@@ -1079,9 +1266,16 @@ UPDATE_MEMORY: {описание изменений в JSON формате}
         window.onload = async function() {
             await initApp();
             setupProactiveNotifications();
+            
+            // Добавляем обработчик Enter для поля API ключа
+            document.getElementById('api-key-input').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    saveApiKey();
+                }
+            });
+            
             debugLog('Приложение инициализировано');
         };
     </script>
 </body>
-
 </html>
